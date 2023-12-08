@@ -238,22 +238,22 @@ struct ObjModel
     {
         return ObjModel{loadObjFile(filename)};
     }
-    ObjModel getTranslated(const Vector3DFloat &transl)
+    ObjModel getTranslated(const Vector3DFloat &transl) const
     {
         return ObjModel{::getTranslated(transl, vertices)};
     }
 
-    ObjModel getRotatedZ(float angle)
+    ObjModel getRotatedZ(float angle) const
     {
         return ObjModel{::getRotatedZ(angle, vertices)};
     }
 
-    ObjModel getRotatedX(float angle)
+    ObjModel getRotatedX(float angle) const
     {
         return ObjModel{::getRotatedX(angle, vertices)};
     }
 
-    ObjModel getRotatedY(float angle)
+    ObjModel getRotatedY(float angle) const
     {
         return ObjModel{::getRotatedY(angle, vertices)};
     }
@@ -263,22 +263,22 @@ struct ObjModel
 
 struct CubeModel
 {
-    CubeModel getTranslated(const Vector3DFloat &transl)
+    CubeModel getTranslated(const Vector3DFloat &transl) const
     {
         return CubeModel{::getTranslated(transl, vertices)};
     }
 
-    CubeModel getRotatedZ(float angle)
+    CubeModel getRotatedZ(float angle) const
     {
         return CubeModel{::getRotatedZ(angle, vertices)};
     }
 
-    CubeModel getRotatedX(float angle)
+    CubeModel getRotatedX(float angle) const
     {
         return CubeModel{::getRotatedX(angle, vertices)};
     }
 
-    CubeModel getRotatedY(float angle)
+    CubeModel getRotatedY(float angle) const
     {
         return CubeModel{::getRotatedY(angle, vertices)};
     }
@@ -472,7 +472,7 @@ private:
     int32_t m_height;
 };
 
-ScreenBuffer g_screenBuffer{500, 500};
+ScreenBuffer g_screenBuffer{720, 720};
 
 void on_delete(Display *display, Window window)
 {
@@ -663,16 +663,16 @@ int main(int, char **)
         static float anglez = 0.0f;
         // anglez += 0.01f;
         static float anglex = 0.0f;
-        anglex += 0.02f;
+        // anglex += 0.02f;
         static float angley = 0.0f;
-        // angley += 0.001f;
+        angley += 0.001f;
 
         angley = clampAngle(angley);
         anglex = clampAngle(anglex);
         anglez = clampAngle(anglez);
 
-        // drawCube(anglez, anglex, angley, {0.0f, 0.0f, 2.0f}, redColor);
-        drawModel(utahTeaPot, anglez, anglex, angley, {0.0f, 0.0f, 6.0f}, redColor);
+        drawCube(anglez, anglex, angley, {1.5f, 0.0f, 3.0f}, blueColor);
+        drawModel(utahTeaPot, anglez, anglex, angley, {-2.0f, -1.5f, 9.0f}, redColor);
 
         if (frames > 500)
         {
