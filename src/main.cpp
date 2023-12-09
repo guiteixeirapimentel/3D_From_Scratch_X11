@@ -544,7 +544,7 @@ void on_delete(Display *display, Window window)
 }
 
 template <typename Model_T>
-void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3DFloat pos, int32_t color)
+void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3DFloat pos, int32_t color, bool wireframe=false)
 {
     model = model.getRotatedZ(anglez);
     model = model.getRotatedX(anglex);
@@ -573,7 +573,16 @@ void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3D
                                       g_screenBuffer.getWidth(), g_screenBuffer.getHeight())
                             .as2DPoint();
 
-        g_screenBuffer.drawTriangle(p1, p2, p3, color);
+        if (wireframe)
+        {
+            g_screenBuffer.drawTriangle(p1, p2, p3, color);
+        }
+        else
+        {
+            g_screenBuffer.drawLine(p1, p2, color);
+            g_screenBuffer.drawLine(p2, p3, color);
+            g_screenBuffer.drawLine(p3, p1, color);
+        }
     }
 }
 
