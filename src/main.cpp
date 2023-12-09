@@ -376,6 +376,69 @@ struct ScreenBuffer
         drawLine(point1.x, point1.y, point2.x, point2.y, argb);
     }
 
+    void drawTriangle(PointInt32 p1, PointInt32 p2, PointInt32 p3, int32_t argb)
+    {
+        if(p1.y < p2.y)
+        {
+            std::swap(p1, p2);
+        }
+
+        if(p2.y < p3.y)
+        {
+            std::swap(p2, p3);
+        }
+
+        if(p1.y < p2.y)
+        {
+            std::swap(p1, p2);
+        }
+
+        if(p1.y == p2.y)
+        {
+            drawFlatTriangle(p1, p2, p3, argb);
+            return;
+        }
+
+        const auto ay = float(p1.x - p3.x) / (p1.y - p3.y);
+        const auto b = p3.x - ay * p3.y;
+        const auto x = static_cast<int32_t>(p2.y*ay + b);
+
+        drawFlatTriangle(p2, {x, p2.y}, p1, argb);
+        drawFlatTriangle(p2, {x, p2.y}, p3, argb);
+    }
+
+    void drawFlatTriangle(PointInt32 p1, PointInt32 p2, PointInt32 p3, int32_t argb)
+    {
+        assert(p1.y == p2.y);
+
+        const auto ay1 = float(p1.x - p3.x) / (p1.y - p3.y);
+        const auto b1 = p3.x - ay1 * p3.y;
+
+        const auto ay2 = float(p2.x - p3.x) / (p2.y - p3.y);
+        const auto b2 = p3.x - ay2 * p3.y;
+
+        if(p1.y < p3.y)
+        {
+            for(auto y = p1.y; y < p3.y; y++)
+            {
+                const auto x1 = static_cast<int32_t>(ay1 * y + b1);
+                const auto x2 = static_cast<int32_t>(ay2 * y + b2);
+
+                drawLine({x1, y}, {x2, y}, argb);
+            }
+        }
+        else
+        {
+            for(auto y = p3.y; y < p1.y; y++)
+            {
+                const auto x1 = static_cast<int32_t>(ay1 * y + b1);
+                const auto x2 = static_cast<int32_t>(ay2 * y + b2);
+
+                drawLine({x1, y}, {x2, y}, argb);
+            }
+        }
+    }
+
     void drawLine(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t argb)
     {
         if (x1 == x2)
@@ -510,9 +573,7 @@ void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3D
                                       g_screenBuffer.getWidth(), g_screenBuffer.getHeight())
                             .as2DPoint();
 
-        g_screenBuffer.drawLine(p1, p2, color);
-        g_screenBuffer.drawLine(p2, p3, color);
-        g_screenBuffer.drawLine(p3, p1, color);
+        g_screenBuffer.drawTriangle(p1, p2, p3, color);
     }
 }
 
@@ -656,16 +717,13 @@ int main(int, char **)
             g_screenBuffer.putPixel(x, y, blueColor);
         }
 
-        // g_screenBuffer.drawLine({0, 0}, {100, 100}, greenColor);
-        // g_screenBuffer.drawLine({0, 0}, {100, 20}, redColor);
-        // g_screenBuffer.drawLine({0, 0}, {100, 400}, blueColor);
 
         static float anglez = 0.0f;
         // anglez += 0.01f;
         static float anglex = 0.0f;
         // anglex += 0.02f;
         static float angley = 0.0f;
-        angley += 0.001f;
+        angley += 0.01f;
 
         angley = clampAngle(angley);
         anglex = clampAngle(anglex);
