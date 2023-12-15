@@ -543,8 +543,33 @@ void on_delete(Display *display, Window window)
     quited = true;
 }
 
+template<typename T>
+Vector3D<T> crossProduct(const Vector3D<T>& v1, const Vector3D<T>& v2)
+{
+    return Vector3D<T>{
+        .x = (v1.y * v2.z) - (v1.z * v2.y),
+        .y = (v1.z * v2.x) - (v1.x * v2.z),
+        .z = (v1.x * v2.y) - (v1.y * v2.x)
+    };
+}
+
+template<typename T>
+T dotProduct(const Vector3D<T>& v1, const Vector3D<T>& v2)
+{
+    return (v1.x*v2.x) + (v1.y*v2.y) + (v1.z * v2.z);
+}
+
+template<typename T>
+Vector3D<T> calculateTriangleNormal(const Vector3D<T>& v1, const Vector3D<T>& v2, const Vector3D<T>& v3)
+{
+    const auto vv1 = Vector3D<T>{v2.x - v1.x, v2.y - v1.y, v2.z - v1.z};
+    const auto vv2 = Vector3D<T>{v3.x - v1.x, v3.y - v1.y, v3.z - v1.z};
+
+    return crossProduct(vv1, vv2);
+}
+
 template <typename Model_T>
-void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3DFloat pos, int32_t color, bool wireframe=false)
+void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3DFloat pos, int32_t color, bool wireframe=false, bool backfaceCulling=true)
 {
     model = model.getRotatedZ(anglez);
     model = model.getRotatedX(anglex);
@@ -561,6 +586,19 @@ void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3D
         const auto &v2 = *(itr + 1);
         const auto &v3 = *(itr + 2);
 
+        if(backfaceCulling)
+        {
+            const auto cameraToTriangle = Vector3D{v1.x - 0, v1.y - 0, v1.z - 0};
+            const auto triangleNormal = calculateTriangleNormal(v1, v2, v3);
+            const auto dotProd = dotProduct(cameraToTriangle, triangleNormal);
+
+            if(dotProd > 0)
+            {
+                i++;
+                continue;
+            }
+        }
+
         const auto p1 = toScreenSpace(applyNonOrthoProj(v1),
                                       g_screenBuffer.getWidth(), g_screenBuffer.getHeight())
                             .as2DPoint();
@@ -573,7 +611,7 @@ void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3D
                                       g_screenBuffer.getWidth(), g_screenBuffer.getHeight())
                             .as2DPoint();
 
-        if (wireframe)
+        if (!wireframe)
         {
             g_screenBuffer.drawTriangle(p1, p2, p3, color);
         }
