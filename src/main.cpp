@@ -16,7 +16,16 @@
 #include <ranges>
 #include <cassert>
 #include <fstream>
+#include <limits>
 bool quited = false;
+
+static constexpr auto colorIndices = std::array{
+    0xFFFF0000,
+    0xFF00FF00,
+    0xFF0000FF,
+    0xFFFF00FF,
+    0xFFFFFF00,
+};
 
 template <typename T>
 struct Matrix3D
@@ -145,12 +154,12 @@ std::vector<Vector3DFloat> loadObjFile(const std::string &filename)
     return res;
 }
 
-Vector3DI32 toScreenSpace(const Vector3DFloat &vec, int32_t screenWidth, int32_t screenHeight)
+Vector3DFloat toScreenSpace(const Vector3DFloat &vec, int32_t screenWidth, int32_t screenHeight)
 {
     return {
-        .x = static_cast<int32_t>((vec.x + 1.0f) * (screenWidth / 2.0f)),
-        .y = static_cast<int32_t>((-vec.y + 1.0f) * (screenHeight / 2.0f)),
-        .z = static_cast<int32_t>(vec.z)};
+        .x = (vec.x + 1.0f) * (screenWidth / 2.0f),
+        .y = (-vec.y + 1.0f) * (screenHeight / 2.0f),
+        .z = vec.z};
 }
 
 Vector3DFloat applyNonOrthoProj(const Vector3DFloat &vec)
@@ -261,6 +270,40 @@ struct ObjModel
     std::vector<Vector3DFloat> vertices = {};
 };
 
+struct SimpleTriangleModel
+{
+    SimpleTriangleModel getTranslated(const Vector3DFloat &transl) const
+    {
+        return SimpleTriangleModel{::getTranslated(transl, vertices)};
+    }
+
+    SimpleTriangleModel getRotatedZ(float angle) const
+    {
+        return SimpleTriangleModel{::getRotatedZ(angle, vertices)};
+    }
+
+    SimpleTriangleModel getRotatedX(float angle) const
+    {
+        return SimpleTriangleModel{::getRotatedX(angle, vertices)};
+    }
+
+    SimpleTriangleModel getRotatedY(float angle) const
+    {
+        return SimpleTriangleModel{::getRotatedY(angle, vertices)};
+    }
+
+    std::vector<Vector3DFloat> vertices = {
+        {-0.7f, -0.5f, 6.0f},
+        {0.7f, -0.25f, 6.0f},
+        {0.0f, 0.5f, 6.0f},
+
+        {-0.5f, -0.5f, 5.0f},
+        {0.5f, -0.45f, 5.0f},
+        {0.0f, 0.5f, 5.0f},
+
+    };
+};
+
 struct CubeModel
 {
     CubeModel getTranslated(const Vector3DFloat &transl) const
@@ -346,17 +389,21 @@ struct CubeModel
     };
 };
 
-struct ScreenBuffer
+struct PixelBuffer
 {
-    ScreenBuffer(int32_t width, int32_t height)
+    static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
+
+    PixelBuffer(int32_t width, int32_t height)
         : m_data(),
+          m_zbuffer(),
           m_width(width),
           m_height(height)
     {
         m_data.resize(width * height);
+        m_zbuffer.resize(width * height);
     }
 
-    ~ScreenBuffer() = default;
+    virtual ~PixelBuffer() = default;
 
     void fillOutBuffer(void *outbuffer) const
     {
@@ -376,38 +423,51 @@ struct ScreenBuffer
         drawLine(point1.x, point1.y, point2.x, point2.y, argb);
     }
 
-    void drawTriangle(PointInt32 p1, PointInt32 p2, PointInt32 p3, int32_t argb)
+    void drawLine(const Vector3DFloat &point1, const Vector3DFloat &point2, int32_t argb)
     {
-        if(p1.y < p2.y)
+        drawLine(point1.x, point1.y, point2.x, point2.y, argb, point1.z, point2.z);
+    }
+
+    void drawTriangle(Vector3DFloat p1, Vector3DFloat p2, Vector3DFloat p3, int32_t argb)
+    {
+        if (p1.y < p2.y)
         {
             std::swap(p1, p2);
         }
 
-        if(p2.y < p3.y)
+        if (p2.y < p3.y)
         {
             std::swap(p2, p3);
         }
 
-        if(p1.y < p2.y)
+        if (p1.y < p2.y)
         {
             std::swap(p1, p2);
         }
 
-        if(p1.y == p2.y)
+        if (p1.y == p2.y)
         {
             drawFlatTriangle(p1, p2, p3, argb);
             return;
         }
 
-        const auto ay = float(p1.x - p3.x) / (p1.y - p3.y);
+        const auto ay = (p1.x - p3.x) / (p1.y - p3.y);
         const auto b = p3.x - ay * p3.y;
-        const auto x = static_cast<int32_t>(p2.y*ay + b);
 
-        drawFlatTriangle(p2, {x, p2.y}, p1, argb);
-        drawFlatTriangle(p2, {x, p2.y}, p3, argb);
+        const auto x = p2.y * ay + b;
+
+        const auto az = (p1.z - p3.z) / (p1.y - p3.y);
+        const auto bz = p3.z - az * p3.y;
+
+        const auto z = p2.y * az + bz;
+
+        const auto midPoint = Vector3DFloat{x, p2.y, z};
+
+        drawFlatTriangle(p2, midPoint, p1, argb);
+        drawFlatTriangle(p2, midPoint, p3, argb);
     }
 
-    void drawFlatTriangle(PointInt32 p1, PointInt32 p2, PointInt32 p3, int32_t argb)
+    void drawFlatTriangle(Vector3DFloat p1, Vector3DFloat p2, Vector3DFloat p3, int32_t argb)
     {
         assert(p1.y == p2.y);
 
@@ -417,30 +477,64 @@ struct ScreenBuffer
         const auto ay2 = float(p2.x - p3.x) / (p2.y - p3.y);
         const auto b2 = p3.x - ay2 * p3.y;
 
-        if(p1.y < p3.y)
-        {
-            for(auto y = p1.y; y < p3.y; y++)
-            {
-                const auto x1 = static_cast<int32_t>(ay1 * y + b1);
-                const auto x2 = static_cast<int32_t>(ay2 * y + b2);
+        const auto az1 = float(p1.z - p3.z) / (p1.y - p3.y);
+        const auto bb1 = p3.z - az1 * p3.y;
 
-                drawLine({x1, y}, {x2, y}, argb);
+        const auto az2 = float(p2.z - p3.z) / (p2.y - p3.y);
+        const auto bb2 = p3.z - az2 * p3.y;
+
+        if (p1.y < p3.y)
+        {
+            for (auto y = p1.y; y < p3.y; y++)
+            {
+                const auto x1 = (ay1 * y + b1);
+                const auto x2 = (ay2 * y + b2);
+                const auto z1 = (az1 * y + bb1);
+                const auto z2 = (az2 * y + bb2);
+
+                drawLine({x1, y, z1}, {x2, y, z2}, argb);
             }
         }
         else
         {
-            for(auto y = p3.y; y < p1.y; y++)
+            for (auto y = p3.y; y < p1.y; y++)
             {
-                const auto x1 = static_cast<int32_t>(ay1 * y + b1);
-                const auto x2 = static_cast<int32_t>(ay2 * y + b2);
+                const auto x1 = (ay1 * y + b1);
+                const auto x2 = (ay2 * y + b2);
+                const auto z1 = (az1 * y + bb1);
+                const auto z2 = (az2 * y + bb2);
 
-                drawLine({x1, y}, {x2, y}, argb);
+                drawLine({x1, y, z1}, {x2, y, z2}, argb);
             }
         }
     }
 
-    void drawLine(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t argb)
+    void drawLine(float x1, float y1, float x2, float y2, float argb, float z1 = 0, float z2 = 0)
     {
+        const auto getZ = [z1, z2, x1, x2, y1, y2](float x, float y)
+        {
+            if (z1 == z2)
+            {
+                return z1;
+            }
+
+            if (x1 != x2)
+            {
+                const auto dzdx = (z2 - z1) / static_cast<float>(x2 - x1);
+                const auto b = z1 - (dzdx * x1);
+                return ((dzdx * x) + b);
+            }
+
+            if (y1 != y2)
+            {
+                const auto dzdy = (z2 - z1) / static_cast<float>(y2 - y1);
+                const auto b = z1 - (dzdy * y1);
+                return ((dzdy * y) + b);
+            }
+            assert(z1 == z2 && "DOT?");
+
+            return z1;
+        };
         if (x1 == x2)
         {
             if (y1 > y2)
@@ -450,7 +544,7 @@ struct ScreenBuffer
             }
             for (auto y = y1; y < y2; y++)
             {
-                putPixel(x1, y, argb);
+                putPixel(x1, y, getZ(x1, y), argb);
             }
             return;
         }
@@ -464,13 +558,13 @@ struct ScreenBuffer
             }
             for (auto x = x1; x < x2; x++)
             {
-                putPixel(x, y1, argb);
+                putPixel(x, y1, getZ(x, y1), argb);
             }
             return;
         }
 
-        const auto ax = float(y1 - y2) / (x1 - x2);
-        const auto ay = float(x1 - x2) / (y1 - y2);
+        const auto ax = (y1 - y2) / (x1 - x2);
+        const auto ay = (x1 - x2) / (y1 - y2);
 
         if (fabs(ax) < fabs(ay))
         {
@@ -484,7 +578,7 @@ struct ScreenBuffer
             for (auto x = x1; x <= x2; x++)
             {
                 const auto y = static_cast<int32_t>(ax * x + b);
-                putPixel(x, y, argb);
+                putPixel(x, y, getZ(x, y), argb);
             }
         }
         else
@@ -499,7 +593,7 @@ struct ScreenBuffer
             for (auto y = y1; y <= y2; y++)
             {
                 const auto x = static_cast<int32_t>(ay * y + b);
-                putPixel(x, y, argb);
+                putPixel(x, y, getZ(x, y), argb);
             }
         }
     }
@@ -519,6 +613,38 @@ struct ScreenBuffer
         m_data[x + (y * m_width)] = argb;
     }
 
+    void putPixel(int32_t x, int32_t y, float z, int32_t color)
+    {
+        const auto index = x + (y * m_width);
+        if (z < m_zbuffer[index])
+        {
+            putPixel(x, y, color);
+            m_zbuffer[index] = z;
+        }
+    }
+
+    void clearZBuffer()
+    {
+        for (auto &zvalue : m_zbuffer)
+        {
+            zvalue = MAX_FLOAT;
+        }
+    }
+
+    int32_t getPixel(const PointInt32 &point) const
+    {
+        return getPixel(point.x, point.y);
+    }
+
+    int32_t getPixel(int32_t x, int32_t y) const
+    {
+        assert(x >= 0);
+        assert(x <= m_width);
+        assert(y >= 0);
+        assert(y <= m_height);
+        return m_data[x + (y * m_height)];
+    }
+
     int32_t getWidth() const
     {
         return m_width;
@@ -529,10 +655,34 @@ struct ScreenBuffer
         return m_height;
     }
 
-private:
+    void drawBuffer(const PixelBuffer &buffer, int32_t posX, int32_t posY)
+    {
+        for (auto i = 0; i < buffer.getWidth(); i++)
+        {
+            for (auto j = 0; j < buffer.getHeight(); j++)
+            {
+                putPixel(i + posX, j + posY, buffer.getPixel(i, j));
+            }
+        }
+    }
+
+protected:
     std::vector<int32_t> m_data;
+    std::vector<float> m_zbuffer;
     int32_t m_width;
     int32_t m_height;
+};
+
+struct ScreenBuffer : public PixelBuffer
+{
+    ScreenBuffer(int32_t width, int32_t height)
+        : PixelBuffer(width, height)
+    {
+    }
+
+    using PixelBuffer::drawLine;
+    using PixelBuffer::drawTriangle;
+    using PixelBuffer::putPixel;
 };
 
 ScreenBuffer g_screenBuffer{720, 720};
@@ -543,24 +693,23 @@ void on_delete(Display *display, Window window)
     quited = true;
 }
 
-template<typename T>
-Vector3D<T> crossProduct(const Vector3D<T>& v1, const Vector3D<T>& v2)
+template <typename T>
+Vector3D<T> crossProduct(const Vector3D<T> &v1, const Vector3D<T> &v2)
 {
     return Vector3D<T>{
         .x = (v1.y * v2.z) - (v1.z * v2.y),
         .y = (v1.z * v2.x) - (v1.x * v2.z),
-        .z = (v1.x * v2.y) - (v1.y * v2.x)
-    };
+        .z = (v1.x * v2.y) - (v1.y * v2.x)};
 }
 
-template<typename T>
-T dotProduct(const Vector3D<T>& v1, const Vector3D<T>& v2)
+template <typename T>
+T dotProduct(const Vector3D<T> &v1, const Vector3D<T> &v2)
 {
-    return (v1.x*v2.x) + (v1.y*v2.y) + (v1.z * v2.z);
+    return (v1.x * v2.x) + (v1.y * v2.y) + (v1.z * v2.z);
 }
 
-template<typename T>
-Vector3D<T> calculateTriangleNormal(const Vector3D<T>& v1, const Vector3D<T>& v2, const Vector3D<T>& v3)
+template <typename T>
+Vector3D<T> calculateTriangleNormal(const Vector3D<T> &v1, const Vector3D<T> &v2, const Vector3D<T> &v3)
 {
     const auto vv1 = Vector3D<T>{v2.x - v1.x, v2.y - v1.y, v2.z - v1.z};
     const auto vv2 = Vector3D<T>{v3.x - v1.x, v3.y - v1.y, v3.z - v1.z};
@@ -569,7 +718,7 @@ Vector3D<T> calculateTriangleNormal(const Vector3D<T>& v1, const Vector3D<T>& v2
 }
 
 template <typename Model_T>
-void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3DFloat pos, int32_t color, bool wireframe=false, bool backfaceCulling=true)
+void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3DFloat pos, int32_t color, bool wireframe = false, bool backfaceCulling = true)
 {
     model = model.getRotatedZ(anglez);
     model = model.getRotatedX(anglex);
@@ -579,6 +728,8 @@ void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3D
 
     assert((model.vertices.size() % 3) == 0);
 
+    int32_t i = 0;
+
     for (auto itr = model.vertices.begin();
          itr != model.vertices.end(); std::advance(itr, 3))
     {
@@ -586,13 +737,13 @@ void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3D
         const auto &v2 = *(itr + 1);
         const auto &v3 = *(itr + 2);
 
-        if(backfaceCulling)
+        if (backfaceCulling)
         {
             const auto cameraToTriangle = Vector3D{v1.x - 0, v1.y - 0, v1.z - 0};
             const auto triangleNormal = calculateTriangleNormal(v1, v2, v3);
             const auto dotProd = dotProduct(cameraToTriangle, triangleNormal);
 
-            if(dotProd > 0)
+            if (dotProd > 0)
             {
                 i++;
                 continue;
@@ -600,34 +751,33 @@ void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3D
         }
 
         const auto p1 = toScreenSpace(applyNonOrthoProj(v1),
-                                      g_screenBuffer.getWidth(), g_screenBuffer.getHeight())
-                            .as2DPoint();
+                                      g_screenBuffer.getWidth(), g_screenBuffer.getHeight());
 
         const auto p2 = toScreenSpace(applyNonOrthoProj(v2),
-                                      g_screenBuffer.getWidth(), g_screenBuffer.getHeight())
-                            .as2DPoint();
+                                      g_screenBuffer.getWidth(), g_screenBuffer.getHeight());
 
         const auto p3 = toScreenSpace(applyNonOrthoProj(v3),
-                                      g_screenBuffer.getWidth(), g_screenBuffer.getHeight())
-                            .as2DPoint();
+                                      g_screenBuffer.getWidth(), g_screenBuffer.getHeight());
 
         if (!wireframe)
         {
-            g_screenBuffer.drawTriangle(p1, p2, p3, color);
+            g_screenBuffer.drawTriangle(p1, p2, p3, colorIndices[i % colorIndices.size()]);
         }
         else
         {
-            g_screenBuffer.drawLine(p1, p2, color);
-            g_screenBuffer.drawLine(p2, p3, color);
-            g_screenBuffer.drawLine(p3, p1, color);
+            g_screenBuffer.drawLine(p1, p2, colorIndices[i % colorIndices.size()]);
+            g_screenBuffer.drawLine(p2, p3, colorIndices[i % colorIndices.size()]);
+            g_screenBuffer.drawLine(p3, p1, colorIndices[i % colorIndices.size()]);
         }
+        i++;
+        std::ignore = color;
     }
 }
 
 void drawCube(float anglez, float anglex, float angley, Vector3DFloat pos, int32_t color)
 {
     auto model = CubeModel{};
-    model = model.getTranslated({-0.5f, -0.5f, -0.5f});
+    // model = model.getTranslated({-0.5f, -0.5f, -0.5f});
     drawModel(model, anglez, anglex, angley, pos, color);
 }
 
@@ -711,6 +861,8 @@ int main(int, char **)
 
     const auto utahTeaPot = ObjModel::fromObjFile("assets/teapot.obj");
 
+    const auto triangleModel = SimpleTriangleModel{};
+
     while (!quited)
     {
         while (XPending(display) > 0)
@@ -764,7 +916,6 @@ int main(int, char **)
             g_screenBuffer.putPixel(x, y, blueColor);
         }
 
-
         static float anglez = 0.0f;
         // anglez += 0.01f;
         static float anglex = 0.0f;
@@ -776,8 +927,10 @@ int main(int, char **)
         anglex = clampAngle(anglex);
         anglez = clampAngle(anglez);
 
-        drawCube(anglez, anglex, angley, {1.5f, 0.0f, 3.0f}, blueColor);
+        // drawCube(anglez, anglex, angley, {1.5f, 0.0f, 3.0f}, blueColor);
+        // drawCube(anglez, anglex, angley, {0.0f, 0.0f, 3.0f}, blueColor);
         drawModel(utahTeaPot, anglez, anglex, angley, {-2.0f, -1.5f, 9.0f}, redColor);
+        // drawModel(triangleModel, anglez, anglex, angley, {0.0f, 0.0f, 0.0f}, redColor,false, false );
 
         if (frames > 500)
         {
@@ -794,6 +947,7 @@ int main(int, char **)
         g_screenBuffer.fillOutBuffer(pixelData);
 
         g_screenBuffer.cleanScreen();
+        g_screenBuffer.clearZBuffer();
 
         pixelData[200 + (50 * g_screenBuffer.getWidth())] = redColor;
         std::ignore = XPutImage(display, window, gc, pImg, 0, 0, 0, 0, imgWidth * 4, imgHeight * 4);
