@@ -579,6 +579,11 @@ struct PixelBuffer
             std::swap(uv1, uv2);
         }
 
+        // Reciprocal to correct texture (https://en.wikipedia.org/wiki/Texture_mapping)
+        p1.z = 1 / p1.z;
+        p2.z = 1 / p2.z;
+        p3.z = 1 / p3.z;
+
         if (p1.y == p2.y)
         {
             drawFlatTriangle(p1, p2, p3, texture, uv1, uv2, uv3);
@@ -684,25 +689,29 @@ struct PixelBuffer
         {
             if (z1 == z2)
             {
-                return z1;
+                // Reciprocal to get the actual z value (https://en.wikipedia.org/wiki/Texture_mapping)
+                return 1/z1;
             }
 
             if (x1 != x2)
             {
                 const auto dzdx = (z2 - z1) / static_cast<float>(x2 - x1);
                 const auto b = z1 - (dzdx * x1);
-                return ((dzdx * x) + b);
+                // Reciprocal to get the actual z value (https://en.wikipedia.org/wiki/Texture_mapping)
+                return 1/((dzdx * x) + b);
             }
 
             if (y1 != y2)
             {
                 const auto dzdy = (z2 - z1) / static_cast<float>(y2 - y1);
                 const auto b = z1 - (dzdy * y1);
-                return ((dzdy * y) + b);
+                // Reciprocal to get the actual z value (https://en.wikipedia.org/wiki/Texture_mapping)
+                return 1/((dzdy * y) + b);
             }
             // assert(z1 == z2 && "DOT?");
 
-            return z1;
+            // Reciprocal to get the actual z value (https://en.wikipedia.org/wiki/Texture_mapping)
+            return 1/z1;
         };
 
         const auto getU = [z1, z2, x1, x2, y1, y2, u1, u2](float x, float y, float z)
@@ -716,21 +725,24 @@ struct PixelBuffer
             {
                 const auto dudx = (u2 - u1) / static_cast<float>(x2 - x1);
                 const auto b = u1 - (dudx * x1);
-                return ((dudx * x) + b);
+                // Multiply by Z to get actual u v coordinates after correction (https://en.wikipedia.org/wiki/Texture_mapping)
+                return ((dudx * x) + b) *z;
             }
 
             if (y1 != y2)
             {
                 const auto dudy = (u2 - u1) / static_cast<float>(y2 - y1);
                 const auto b = u1 - (dudy * y1);
-                return ((dudy * y) + b);
+                // Multiply by Z to get actual u v coordinates after correction (https://en.wikipedia.org/wiki/Texture_mapping)
+                return ((dudy * y) + b) *z;
             }
 
             if (z1 != z2)
             {
                 const auto dudz = (u2 - u1) / static_cast<float>(z2 - z1);
                 const auto b = u1 - (dudz * z1);
-                return ((dudz * z) + b);
+                // Multiply by Z to get actual u v coordinates after correction (https://en.wikipedia.org/wiki/Texture_mapping)
+                return ((dudz * z) + b) *z;
             }
 
             return u1;
@@ -748,21 +760,24 @@ struct PixelBuffer
             {
                 const auto dudx = (v2 - v1) / static_cast<float>(x2 - x1);
                 const auto b = v1 - (dudx * x1);
-                return ((dudx * x) + b);
+                // Multiply by Z to get actual u v coordinates after correction (https://en.wikipedia.org/wiki/Texture_mapping)
+                return ((dudx * x) + b)*z;
             }
 
             if (y1 != y2)
             {
                 const auto dudy = (v2 - v1) / static_cast<float>(y2 - y1);
                 const auto b = v1 - (dudy * y1);
-                return ((dudy * y) + b);
+                // Multiply by Z to get actual u v coordinates after correction (https://en.wikipedia.org/wiki/Texture_mapping)
+                return ((dudy * y) + b)*z;
             }
 
             if (z1 != z2)
             {
                 const auto dudz = (v2 - v1) / static_cast<float>(z2 - z1);
                 const auto b = v1 - (dudz * z1);
-                return ((dudz * z) + b);
+                // Multiply by Z to get actual u v coordinates after correction (https://en.wikipedia.org/wiki/Texture_mapping)
+                return ((dudz * z) + b) *z;
             }
 
             return v1;
@@ -1018,7 +1033,8 @@ void drawModel(Model_T model, float anglez, float anglex, float angley, Vector3D
 
         if (!wireframe)
         {
-            g_screenBuffer.drawTriangle(p1, p2, p3, texture, {v1.u, v1.v}, {v2.u, v2.v}, {v3.u, v3.v});
+            // Divide u and v by z (to correct for perspective - https://en.wikipedia.org/wiki/Texture_mapping)
+            g_screenBuffer.drawTriangle(p1, p2, p3, texture, {v1.u/p1.z, v1.v/p1.z}, {v2.u/p2.z, v2.v/p2.z}, {v3.u/p3.z, v3.v/p3.z});
         }
         // else
         // {
@@ -1206,16 +1222,16 @@ int main(int, char **)
         static float anglez = 0.0f;
         // anglez += 0.01f;
         static float anglex = 3.14159f *0.0;
-        anglex += 0.002f;
+        // anglex += 0.002f;
         static float angley = 0.0f;
-        // angley += 0.01f;
+        angley += 0.002f;
 
         angley = clampAngle(angley);
         anglex = clampAngle(anglex);
         anglez = clampAngle(anglez);
 
         // drawCube(anglez, anglex, angley, {1.5f, 0.0f, 3.0f}, blueColor);
-        // drawCube(anglez, anglex, angley, {0.0f, 0.0f, 3.0f}, blueColor);
+        // drawCube(anglez, anglex, angley, {0.0f, 0.0f, 3.0f}, texture);
         // drawModel(utahTeaPot, anglez, anglex, angley, {-2.0f, -1.5f, 9.0f}, texture);
         drawModel(triangleModel, anglez, anglex, angley, {0.2f, 0.0f, 1.2f}, texture, false, false);
 
