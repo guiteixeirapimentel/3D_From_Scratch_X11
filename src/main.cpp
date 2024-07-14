@@ -718,7 +718,7 @@ struct PixelBuffer
         {
             if (u1 == u2)
             {
-                return u1;
+                return u1*z;
             }
 
             if (x1 != x2)
@@ -745,14 +745,14 @@ struct PixelBuffer
                 return ((dudz * z) + b) *z;
             }
 
-            return u1;
+            return u1*z;
         };
 
         const auto getV = [z1, z2, x1, x2, y1, y2, v1, v2](float x, float y, float z)
         {
             if (v1 == v2)
             {
-                return v1;
+                return v1*z;
             }
 
 
@@ -780,7 +780,7 @@ struct PixelBuffer
                 return ((dudz * z) + b) *z;
             }
 
-            return v1;
+            return v1*z;
         };
 
         const auto getColor = [getU, getV, &texture](float x, float y, float z)
